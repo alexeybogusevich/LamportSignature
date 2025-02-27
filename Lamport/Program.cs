@@ -1,13 +1,16 @@
 ﻿using Lamport;
-using System.Security.Cryptography;
+using System.Text;
 
-var lamport = new LamportSignature();
+string password = "userPassword";
+string serverName = "exampleServer";
+int N = 1000;
 
-var message = System.Text.Encoding.UTF8.GetBytes("Hello, Lamport!");
-var messageHash = SHA256.HashData(message);
+var serverAuth = new LamportAuth(N, password, serverName);
 
-var signature = lamport.Sign(messageHash);
+for (int i = 1; i <= N; i++)
+{
+    var clientHash = LamportAuth.ComputeHashChain(Encoding.UTF8.GetBytes(password + serverName), N - i);
+    var isAuthenticated = serverAuth.Authenticate(clientHash);
 
-bool isValid = LamportSignature.Verify(lamport.PublicKey0, lamport.PublicKey1, messageHash, signature);
-
-Console.WriteLine("Signature valid: " + isValid);
+    Console.WriteLine($"Authentication attempt {i}: {(isAuthenticated ? "Success" : "Failure")}");
+}

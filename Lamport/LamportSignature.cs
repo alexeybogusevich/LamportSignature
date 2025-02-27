@@ -1,75 +1,64 @@
 ﻿using System.Security.Cryptography;
+using System.Text;
 
 namespace Lamport
 {
-    public class LamportSignature
+    public class LamportAuth
     {
-        private readonly byte[][] _privateKey0;
-        private readonly byte[][] _privateKey1;
+        private readonly int _n;
 
-        public LamportSignature()
+        private int _a = 1;
+        private byte[] _currentHash;
+
+        public LamportAuth(int iterations, string password, string serverName)
         {
-            _privateKey0 = new byte[256][];
-            _privateKey1 = new byte[256][];
-
-            PublicKey0 = new byte[256][];
-            PublicKey1 = new byte[256][];
-
-            using var rng = RandomNumberGenerator.Create();
-
-            for (int i = 0; i < 256; i++)
-            {
-                _privateKey0[i] = new byte[32];
-                _privateKey1[i] = new byte[32];
-
-                rng.GetBytes(_privateKey0[i]);
-                rng.GetBytes(_privateKey1[i]);
-
-                PublicKey0[i] = SHA256.HashData(_privateKey0[i]);
-                PublicKey1[i] = SHA256.HashData(_privateKey1[i]);
-            }
+            _n = iterations;
+            byte[] P = Encoding.UTF8.GetBytes(password + serverName);
+            _currentHash = ComputeHashChain(P, _n);
         }
 
-        public byte[][] PublicKey0 { get; private set; }
-
-        public byte[][] PublicKey1 { get; private set; }
-
-        public byte[][] Sign(byte[] messageHash)
+        public static byte[] ComputeHashChain(byte[] input, int count)
         {
-            if (messageHash.Length != 32)
+            byte[] hash = input;
+
+            for (int i = 0; i < count; i++)
             {
-                throw new ArgumentException("Message hash must be 32 bytes (SHA-256 output).", nameof(messageHash));
+                hash = SHA256.HashData(hash);
             }
 
-            var signature = new byte[256][];
-
-            for (int i = 0; i < 256; i++)
-            {
-                signature[i] = ((messageHash[i / 8] >> (i % 8)) & 1) == 0 ? _privateKey0[i] : _privateKey1[i];
-            }
-
-            return signature;
+            return hash;
         }
 
-        public static bool Verify(byte[][] publicKey0, byte[][] publicKey1, byte[] messageHash, byte[][] signature)
+        private static bool CompareHashes(byte[] hash1, byte[] hash2)
         {
-            if (messageHash.Length != 32 || signature.Length != 256)
+            if (hash1.Length != hash2.Length)
             {
                 return false;
             }
 
-            for (int i = 0; i < 256; i++)
+            for (int i = 0; i < hash1.Length; i++)
             {
-                var expectedHash = ((messageHash[i / 8] >> (i % 8)) & 1) == 0 ? publicKey0[i] : publicKey1[i];
-                var actualHash = SHA256.HashData(signature[i]);
-
-                if (!expectedHash.SequenceEqual(actualHash))
+                if (hash1[i] != hash2[i])
                 {
                     return false;
                 }
             }
 
             return true;
+        }
+
+        public bool Authenticate(byte[] clientHash)
+        {
+            var computedHash = ComputeHashChain(clientHash, _a);
+
+            if (CompareHashes(computedHash, _currentHash))
+            {
+                _currentHash = computedHash;
+                _a++;
+                return true;
+            }
+
+            return false;
         }
     }
 }
